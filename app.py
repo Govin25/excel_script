@@ -1,19 +1,20 @@
 import streamlit as st
 import pandas as pd
-import openai
+from openai import OpenAI
 from dotenv import load_dotenv
 import os
+from io import BytesIO
 
 # Load environment variables
 load_dotenv()
 
 # Configure OpenAI
-openai.api_key = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 def generate_response(question):
     """Generate AI response for a given question"""
     try:
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant that provides clear and concise answers."},
@@ -23,7 +24,10 @@ def generate_response(question):
         )
         return response.choices[0].message.content
     except Exception as e:
-        return f"Error generating response: {str(e)}"
+        error_message = str(e)
+        if "insufficient_quota" in error_message:
+            return "Error: OpenAI API quota exceeded. Please check your billing status and plan details at https://platform.openai.com/account/billing/overview"
+        return f"Error generating response: {error_message}"
 
 def process_excel(file):
     """Process Excel file and generate responses"""
@@ -35,7 +39,7 @@ def process_excel(file):
         question_column = df.columns[0]
         
         # Generate responses for each question
-        df['AI Response'] = df[question_column].apply(generate_response)
+        df['Answers'] = df[question_column].apply(generate_response)
         
         return df
     except Exception as e:
@@ -59,11 +63,15 @@ def main():
                 st.write("### Preview of Results")
                 st.dataframe(df)
                 
+                # Create a buffer to store the Excel file
+                buffer = BytesIO()
+                df.to_excel(buffer, index=False)
+                buffer.seek(0)
+                
                 # Download button
-                output = df.to_excel(index=False)
                 st.download_button(
                     label="Download Results",
-                    data=output,
+                    data=buffer,
                     file_name="processed_results.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
